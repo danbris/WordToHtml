@@ -1,82 +1,65 @@
-﻿using DocumentFormat.OpenXml.Packaging;
+﻿using DevExpress.XtraRichEdit;
+using DocumentFormat.OpenXml.Packaging;
+using OpenXmlPowerTools;
 using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
-using DocumentFormat.OpenXml.Wordprocessing;
-using OpenXmlPowerTools;
-using System.Drawing.Imaging;
+using Encoder = System.Drawing.Imaging.Encoder;
 
 namespace WordToHtml
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static Dictionary<string, Bitmap> _imagesDictionary = new Dictionary<string, Bitmap>();
+
+        private static void Main(string[] args)
         {
-            ConvertToHtml(
-                @"c:\Work\DocuPerformer\_Feature6\src\Application\AppData\Generated\BI2\Queries\REP-FAD_YAD_M01_Q0001-20200306-Doc_EN-Com_EN-BI2.docx",
-                @"c:\Work\DocuPerformer\test html");
+            //ConvertToHtml(
+            //    @"c:\Work\DocuPerformer\Main\src\Application\AppData\Generated\BI2\Queries\REP-IMOPCA_M01_Q0001-20200701-Doc_EN-Com_EN-BI2.docx",
+            //    @"c:\Work\DocuPerformer\test html");
+
+            ConvertToHtmlUsingDevexpress(
+                @"c:\Work\DocuPerformer\Main\src\Application\AppData\Generated\BI2\DesignStudio Reports BW\AZAP-0EPM_OPEN_ITEMS_ANALYTICS-20200702-Doc_EN-Com_EN-BI2.docx",
+                @"c:\Work\DocuPerformer\test html\AZAP-0EPM_OPEN_ITEMS_ANALYTICS-20200702-Doc_EN-Com_EN-BI2.html");
         }
 
         public static void ConvertToHtml(string file, string outputDirectory)
         {
             var fi = new FileInfo(file);
             Console.WriteLine(fi.Name);
-            byte[] byteArray = File.ReadAllBytes(fi.FullName);
+            var byteArray = File.ReadAllBytes(fi.FullName);
 
-            using (MemoryStream memoryStream = new MemoryStream())
+            using (var memoryStream = new MemoryStream())
             {
                 memoryStream.Write(byteArray, 0, byteArray.Length);
-                using (WordprocessingDocument wDoc = WordprocessingDocument.Open(memoryStream, true))
+                using (var wDoc = WordprocessingDocument.Open(memoryStream, true))
                 {
-                    var settingsPart = wDoc.MainDocumentPart.Parts.FirstOrDefault(x => x.OpenXmlPart is DocumentSettingsPart);
-                    var xmlSettingPart = settingsPart?.OpenXmlPart as DocumentSettingsPart;
-
-                    xmlSettingPart.Settings = new Settings
-                    { BordersDoNotSurroundFooter = new BordersDoNotSurroundFooter() { Val = true } };
-                    xmlSettingPart.Settings.Append(new UpdateFieldsOnOpen() { Val = true });
-                    wDoc.Save();
-                }
-            }
-
-            //return;
-
-
-            using (MemoryStream memoryStream = new MemoryStream())
-            {
-                memoryStream.Write(byteArray, 0, byteArray.Length);
-                using (WordprocessingDocument wDoc = WordprocessingDocument.Open(memoryStream, true))
-                {
-                    //var settingsPart = wDoc.MainDocumentPart.AddNewPart<DocumentSettingsPart>();
-                    //settingsPart.Settings = new Settings { BordersDoNotSurroundFooter = new BordersDoNotSurroundFooter() { Val = true } };
-                    //settingsPart.Settings.Append(new UpdateFieldsOnOpen() { Val = true });
-
-                    var destFileName = new FileInfo(fi.Name.Replace(".docx", ".html"));
-                    if (outputDirectory != null && outputDirectory != string.Empty)
+                   var destFileName = new FileInfo(fi.Name.Replace(".docx", ".html"));
+                    if (!string.IsNullOrEmpty(outputDirectory))
                     {
-                        DirectoryInfo di = new DirectoryInfo(outputDirectory);
-                        if (!di.Exists)
-                        {
-                            throw new OpenXmlPowerToolsException("Output directory does not exist");
-                        }
+                        var di = new DirectoryInfo(outputDirectory);
+                        if (!di.Exists) throw new OpenXmlPowerToolsException("Output directory does not exist");
 
                         destFileName = new FileInfo(Path.Combine(di.FullName, destFileName.Name));
                     }
 
                     var imageDirectoryName =
                         destFileName.FullName.Substring(0, destFileName.FullName.Length - 5) + "_files";
-                    int imageCounter = 0;
+                    var imageCounter = 0;
 
                     var pageTitle = fi.FullName;
                     var part = wDoc.CoreFilePropertiesPart;
                     if (part != null)
-                    {
-                        pageTitle = (string)part.GetXDocument().Descendants(DC.title).FirstOrDefault() ?? fi.FullName;
-                    }
+                        pageTitle = (string) part.GetXDocument().Descendants(DC.title).FirstOrDefault() ?? fi.FullName;
 
                     // TODO: Determine max-width from size of content area.
-                    WmlToHtmlConverterSettings settings = new WmlToHtmlConverterSettings()
+                    var settings = new WmlToHtmlConverterSettings
                     {
                         AdditionalCss = "body { margin: 1cm auto; max-width: 20cm; padding: 0; }",
                         PageTitle = pageTitle,
@@ -86,20 +69,28 @@ namespace WordToHtml
                         RestrictToSupportedNumberingFormats = false,
                         ImageHandler = imageInfo =>
                         {
-                            DirectoryInfo localDirInfo = new DirectoryInfo(imageDirectoryName);
+                            var localDirInfo = new DirectoryInfo(imageDirectoryName);
                             if (!localDirInfo.Exists)
                                 localDirInfo.Create();
-                            ++imageCounter;
-                            string extension = imageInfo.ContentType.Split('/')[1].ToLower();
+                           
+                            var extension = imageInfo.ContentType.Split('/')[1].ToLower();
                             ImageFormat imageFormat = null;
                             if (extension == "png")
+                            {
                                 imageFormat = ImageFormat.Png;
+                            }
                             else if (extension == "gif")
+                            {
                                 imageFormat = ImageFormat.Gif;
+                            }
                             else if (extension == "bmp")
+                            {
                                 imageFormat = ImageFormat.Bmp;
+                            }
                             else if (extension == "jpeg")
+                            {
                                 imageFormat = ImageFormat.Jpeg;
+                            }
                             else if (extension == "tiff")
                             {
                                 // Convert tiff to gif.
@@ -117,47 +108,59 @@ namespace WordToHtml
                             if (imageFormat == null)
                                 return null;
 
-                            string imageFileName = imageDirectoryName + "/image" +
-                                                   imageCounter.ToString() + "." + extension;
+                            var imageFileName = imageDirectoryName + "/image" + imageCounter + "." + extension;
+                            var imageSource = $"/download/attachments/89790344/image{imageCounter}.{extension}";
+
                             try
                             {
-                                imageInfo.Bitmap.Save(imageFileName, imageFormat);
+                                //if (!_imagesDictionary.Values.Any(x=> imageInfo.Bitmap.Equals(x)))
+                                //{
+                                    imageInfo.Bitmap.Save(imageFileName, imageFormat);
+                                    _imagesDictionary.Add(imageFileName, imageInfo.Bitmap);
+                                    imageCounter++;
+                                //}
                             }
-                            catch (System.Runtime.InteropServices.ExternalException)
+                            catch (ExternalException)
                             {
                                 return null;
                             }
 
-                            string imageSource = localDirInfo.Name + "/image" +
-                                                 imageCounter.ToString() + "." + extension;
+                            //var imageSource = localDirInfo.Name + "/image" +
+                            //                  imageCounter + "." + extension;
 
-                            XElement img = new XElement(Xhtml.img,
+                           var img = new XElement(Xhtml.img,
                                 new XAttribute(NoNamespace.src, imageSource),
                                 imageInfo.ImgStyleAttribute,
                                 imageInfo.AltText != null ? new XAttribute(NoNamespace.alt, imageInfo.AltText) : null);
+
                             return img;
                         }
                     };
-                    XElement htmlElement = WmlToHtmlConverter.ConvertToHtml(wDoc, settings);
+                    var htmlElement = WmlToHtmlConverter.ConvertToHtml(wDoc, settings);
 
                     // Produce HTML document with <!DOCTYPE html > declaration to tell the browser
                     // we are using HTML5.
-                    var html = new XDocument(
-                        new XDocumentType("html", null, null, null),
-                        htmlElement);
+                    //var html = new XDocument(
+                    //    new XDocumentType("html", null, null, null),
+                    //    htmlElement);
+                    var html = new XDocument(htmlElement);
 
-                    // Note: the xhtml returned by ConvertToHtmlTransform contains objects of type
-                    // XEntity.  PtOpenXmlUtil.cs define the XEntity class.  See
-                    // http://blogs.msdn.com/ericwhite/archive/2010/01/21/writing-entity-references-using-linq-to-xml.aspx
-                    // for detailed explanation.
-                    //
-                    // If you further transform the XML tree returned by ConvertToHtmlTransform, you
-                    // must do it correctly, or entities will not be serialized properly.
-
-                    var htmlString = html.ToString(SaveOptions.DisableFormatting);
-                    File.WriteAllText(destFileName.FullName, htmlString, Encoding.UTF8);
+                    var htmlString = html.ToString(SaveOptions.None);
+                    File.WriteAllText(destFileName.FullName, htmlString);
                 }
             }
+        }
+
+        public static void ConvertToHtmlUsingDevexpress(string file, string outputDirectory)
+        {
+            var richEditDocumentServer = new RichEditDocumentServer();
+            richEditDocumentServer.LoadDocument(file, DevExpress.XtraRichEdit.DocumentFormat.OpenXml);
+            using (var htmlFileStream = new FileStream(outputDirectory, FileMode.Create))
+            {
+                richEditDocumentServer.SaveDocument(htmlFileStream, DevExpress.XtraRichEdit.DocumentFormat.Html);
+            }
+
+            System.Diagnostics.Process.Start(outputDirectory);
         }
     }
 }

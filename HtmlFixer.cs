@@ -21,11 +21,19 @@ namespace WordToHtml
             var head = xmlDoc.DocumentElement.ChildNodes.OfType<XmlNode>().FirstOrDefault(x => x.Name == "head");
             var style = head.ChildNodes.OfType<XmlNode>().FirstOrDefault(x => x.Name == "style");
             var body = xmlDoc.DocumentElement.ChildNodes.OfType<XmlNode>().FirstOrDefault(x => x.Name == "body");
-
+            var div = body.ChildNodes.OfType<XmlNode>().FirstOrDefault(x => x.Name == "div");
             SetupStyleDictionary(style.InnerText);
             head.RemoveChild(style);
 
             ReplaceClassWithActualStyle(body, xmlDoc);
+
+            var divStyle = div.Attributes?.OfType<XmlAttribute>().FirstOrDefault(x => x.Name == "style");
+            if (divStyle == null)
+            {
+                var styleAttribute = xmlDoc.CreateAttribute("style");
+                styleAttribute.Value = _styles[body.Name].Replace(Environment.NewLine, string.Empty);
+                div.Attributes.Append(styleAttribute);
+            }
 
             return xmlDoc.InnerXml;
             using (var sw = new StringWriter())
@@ -54,6 +62,27 @@ namespace WordToHtml
         private void FixClassAttribute(XmlNode node, XmlDocument doc)
         {
             if (node.Attributes == null) return;
+            if (node.Name == "a")
+            {
+               
+                var nameAttr  = node.Attributes.OfType<XmlAttribute>().FirstOrDefault(x => x.Name == "name");
+                if (nameAttr == null)
+                {
+                    var idAttr = node.Attributes.OfType<XmlAttribute>().FirstOrDefault(x => x.Name == "id");
+                    if (idAttr != null)
+                    {
+                        // Confluence does not support id for anchors; add a name attribute and also, if the anchor has no content, add an empty span
+                        nameAttr = doc.CreateAttribute("name");
+                        nameAttr.Value = idAttr.Value;
+                        node.Attributes.Append(nameAttr);
+                        var childNodes = node.ChildNodes.OfType<XmlNode>();
+                        if (!childNodes.Any())
+                        {
+                            node.AppendChild(doc.CreateNode(XmlNodeType.Element,"span",string.Empty));
+                        }
+                    }
+                }
+            }
 
             var classAttribute = node.Attributes.OfType<XmlAttribute>().FirstOrDefault(x => x.Name == "class");
             var styleAttribute = node.Attributes?.OfType<XmlAttribute>().FirstOrDefault(x => x.Name == "style");

@@ -12,21 +12,31 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
+using HtmlAgilityPack;
 using Encoder = System.Drawing.Imaging.Encoder;
 
 namespace WordToHtml
 {
     internal class Program
     {
-        private static Dictionary<string, Bitmap> _imagesDictionary = new Dictionary<string, Bitmap>();
+       private static List<string> _images = new List<string>();
 
-        private static void Main(string[] args)
+       private static void Main(string[] args)
         {
             var sw = Stopwatch.StartNew();
+            //ConvertToHtml(
+            //    @"c:\Work\DocuPerformer\Test tables.docx",
+            //    @"c:\Work\DocuPerformer\test html");
+
             ConvertToHtml(
-                @"c:\Work\DocuPerformer\Main\src\Application\AppData\Generated\BI2\DesignStudio Reports BW\AZAP-0EPM_OPEN_ITEMS_ANALYTICS-20200702-Doc_EN-Com_EN-BI2.docx",
+                @"C:\Work\DocuPerformer\Main\src\Application\AppData\Generated\BI2\Queries\REP-0CCA_C03_Q1001-20200703-Doc_EN-Com_EN-BI2.docx",
                 @"c:\Work\DocuPerformer\test html");
 
+            //var doc = new HtmlDocument();
+            //doc.Load(@"C:\Work\DocuPerformer\Main\src\Application\AppData\Generated\BI2\Queries\REP-VMM_H001_QT001-20200703-Doc_EN-Com_EN-BI2.html");
+            //doc.Save(@"c:\Work\DocuPerformer\test html\test with agility pack.html");
+
+            
             Debug.WriteLine($"Conversion took  {sw.ElapsedMilliseconds}ms");
             Console.ReadLine();
         }
@@ -55,7 +65,6 @@ namespace WordToHtml
 
                     var imageDirectoryName =
                         destFileName.FullName.Substring(0, destFileName.FullName.Length - 5) + "_files";
-                    var imageCounter = 0;
 
                     var pageTitle = fi.FullName;
                     var part = wDoc.CoreFilePropertiesPart;
@@ -71,9 +80,65 @@ namespace WordToHtml
                         CssClassPrefix = "pt-",
                         RestrictToSupportedLanguages = false,
                         RestrictToSupportedNumberingFormats = false,
-                        
+                        ImageHandler = imageInfo =>
+                        {
+                            var localDirInfo = new DirectoryInfo(imageDirectoryName);
+                            if (!localDirInfo.Exists)
+                                localDirInfo.Create();
+
+                            var extension = imageInfo.ContentType.Split('/')[1].ToLower();
+                            ImageFormat imageFormat = null;
+                            if (extension == "png")
+                            {
+                                imageFormat = ImageFormat.Png;
+                            }
+                            else if (extension == "gif")
+                            {
+                                imageFormat = ImageFormat.Gif;
+                            }
+                            else if (extension == "bmp")
+                            {
+                                imageFormat = ImageFormat.Bmp;
+                            }
+                            else if (extension == "jpeg")
+                            {
+                                imageFormat = ImageFormat.Jpeg;
+                            }
+                            else if (extension == "tiff")
+                            {
+                                // Convert tiff to gif.
+                                extension = "gif";
+                                imageFormat = ImageFormat.Gif;
+                            }
+
+                            if (imageFormat == null)
+                                return null;
+
+                            var imageFileName = imageDirectoryName + "\\" + imageInfo.AltText + "." + extension;
+                            var imageSource = $"/download/attachments/89790660/{imageInfo.AltText + "." + extension}";
+
+                            try
+                            {
+                                if (!_images.Contains(imageFileName))
+                                {
+                                    imageInfo.Bitmap.Save(imageFileName, imageFormat);
+                                    _images.Add(imageFileName);
+                                }
+                            }
+                            catch (ExternalException)
+                            {
+                                return null;
+                            }
+
+                            var img = new XElement(Xhtml.img,
+                                 new XAttribute(NoNamespace.src, imageSource),
+                                 imageInfo.ImgStyleAttribute,
+                                 imageInfo.AltText != null ? new XAttribute(NoNamespace.alt, imageInfo.AltText) : null);
+
+                            return img;
+                        }
+
                     };
-                    Console.WriteLine($"Prepared settings at {sw.ElapsedMilliseconds}ms");
                     var htmlElement = WmlToHtmlConverter.ConvertToHtml(wDoc, settings);
                     Console.WriteLine($"Converted to HTML at {sw.ElapsedMilliseconds}ms");
                     // Produce HTML document with <!DOCTYPE html > declaration to tell the browser
@@ -82,15 +147,14 @@ namespace WordToHtml
                     //    new XDocumentType("html", null, null, null),
                     //    htmlElement);
                     var html = new XDocument(htmlElement);
-                    Console.WriteLine($"Created XDocument at {sw.ElapsedMilliseconds}ms");
+                   
                     var htmlString = html.ToString(SaveOptions.None);
                     File.WriteAllText(destFileName.FullName, htmlString);
-                    Console.WriteLine($"Save to disk at {sw.ElapsedMilliseconds}ms");
                     
                     var htmlFixer = new HtmlFixer();
                     File.WriteAllText(destFileName.FullName + "fixer.html", htmlFixer.FormatHtmlForConfluence(htmlString));
                     Console.WriteLine($"Fixed HTML format at {sw.ElapsedMilliseconds}ms");
-                    System.Diagnostics.Process.Start(destFileName.FullName + "fixer.html");
+                    Process.Start(destFileName.FullName + "fixer.html");
                 }
             }
         }
